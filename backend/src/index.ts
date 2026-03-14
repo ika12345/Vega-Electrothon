@@ -18,11 +18,21 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
-  origin: [
-    "https://agent-market-teal.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:3001"
-  ],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedPatterns = [
+      /\.vercel\.app$/,           // Any Vercel deployment
+      /^http:\/\/localhost:\d+$/,  // Any localhost port
+    ];
+    
+    if (allowedPatterns.some(pattern => pattern.test(origin))) {
+      return callback(null, true);
+    }
+    
+    callback(new Error("Not allowed by CORS"));
+  },
   credentials: true
 }));
 app.use(express.json({ limit: "10mb" })); // Limit request body size
