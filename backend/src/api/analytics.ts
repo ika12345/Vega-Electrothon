@@ -14,7 +14,7 @@ router.get("/platform", async (req: Request, res: Response) => {
     // Calculate platform stats
     const totalAgents = agents.length;
     const totalExecutions = executions.length;
-    const totalSuccessfulExecutions = executions.filter(e => e.success).length;
+    const totalSuccessfulExecutions = executions.filter((e: any) => e.success).length;
     
     // Revenue in SOL (0.01 SOL per execution for demo)
     const totalRevenue = totalSuccessfulExecutions * 0.01;
@@ -32,9 +32,9 @@ router.get("/platform", async (req: Request, res: Response) => {
         successRate: successRate.toFixed(1),
         network: "Solana Devnet"
       },
-      agents: agents.map(agent => {
-        const agentExecutions = executions.filter(e => e.agentId === agent.id);
-        const agentSuccess = agentExecutions.filter(e => e.success).length;
+      agents: agents.map((agent: any) => {
+        const agentExecutions = executions.filter((e: any) => e.agentId === agent.id);
+        const agentSuccess = agentExecutions.filter((e: any) => e.success).length;
         return {
           id: agent.id,
           name: agent.name,
@@ -68,7 +68,7 @@ router.get("/agents/:id", async (req: Request, res: Response) => {
 
     const executions = db.getExecutions({ agentId });
     const totalExecutions = executions.length;
-    const successfulExecutions = executions.filter(e => e.success).length;
+    const successfulExecutions = executions.filter((e: any) => e.success).length;
     const price = 0.01;
     const revenue = price * successfulExecutions;
     const successRate = totalExecutions > 0 

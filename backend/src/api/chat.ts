@@ -3,8 +3,6 @@ import { db } from "../lib/database";
 import { determineAgentTools, fetchMarketData, createCryptoComClient, executeBlockchainQuery } from "../agent-engine/tools";
 import { verifySolanaTransaction } from "../utils/solana";
 import { executeAgent } from "../agent-engine/executor";
-import { ethers } from "ethers";
-import { getVVSQuote, getTokenAddress, buildVVSSwapTransaction, getTokenDecimals } from "../lib/vvs-finance";
 
 /**
  * OPTIMIZATION: Simple in-memory cache for market data
@@ -165,56 +163,7 @@ async function fetchDataInParallel(params: {
     );
   }
 
-  // 3. Swap quote fetch (parallel)
-  if (needsSwap) {
-    promises.push(
-      (async () => {
-        try {
-          const swapMatch = input.match(/(?:swap|exchange|trade|convert)\s+(\d+(?:\.\d+)?)\s+(\w+)\s+(?:for|to|into)\s+(\w+)/i);
-          if (swapMatch) {
-            const amountIn = swapMatch[1];
-            const tokenInSymbol = swapMatch[2].toUpperCase();
-            const tokenOutSymbol = swapMatch[3].toUpperCase();
-            
-            const rpcUrl = process.env.CRONOS_RPC_URL || "https://evm-t3.cronos.org";
-            const isTestnet = rpcUrl.includes("evm-t3") || rpcUrl.includes("testnet");
-            const wantsMainnet = /mainnet|main|production/i.test(input);
-            const networkForLookup = wantsMainnet || !isTestnet ? 'mainnet' : 'testnet';
-            
-            const tokenInAddress = await getTokenAddress(tokenInSymbol, networkForLookup) || tokenInSymbol;
-            const tokenOutAddress = await getTokenAddress(tokenOutSymbol, networkForLookup) || tokenOutSymbol;
-            const amountInWei = ethers.parseUnits(amountIn, 18);
-            
-            const quote = await getVVSQuote(tokenInAddress, tokenOutAddress, amountInWei.toString(), wantsMainnet);
-            if (quote) {
-              const tokenOutDecimals = getTokenDecimals(tokenOutAddress);
-              const amountOut = ethers.formatUnits(quote.amountOut, tokenOutDecimals);
-              const amountOutMin = (BigInt(quote.amountOut) * 99n / 100n).toString();
-              
-              results.swapData = {
-                swapTransactionData: buildVVSSwapTransaction(
-                  tokenInAddress,
-                  tokenOutAddress,
-                  amountInWei.toString(),
-                  amountOutMin,
-                  verification.payer || "0x0000000000000000000000000000000000000000"
-                ),
-                swapQuoteInfo: {
-                  amountIn,
-                  tokenIn: tokenInSymbol,
-                  tokenOut: tokenOutSymbol,
-                  expectedAmountOut: amountOut,
-                  network: wantsMainnet || !isTestnet ? "Mainnet" : "Testnet",
-                },
-              };
-            }
-          }
-        } catch (err) {
-          console.warn(`[Chat] Swap quote fetch failed:`, err);
-        }
-      })()
-    );
-  }
+  // 3. Swap quote fetch removed (VVS Swap deprecated in Solana migration)
 
   // 4. Portfolio fetch (parallel)
   if (needsPortfolio && verification.payer) {
@@ -341,90 +290,7 @@ async function fetchDataInParallel(params: {
     );
   }
 
-  // 5. Transaction history fetch (parallel) - OPTIMIZED: Faster with timeout and reduced blocks
-  // OPTIMIZATION: Use payer's address automatically when user says "my transaction history"
-  if (needsHistory && verification.payer) {
-    promises.push(
-      (async () => {
-        try {
-          console.log(`[Chat] 📜 Fetching transaction history for ${verification.payer}...`);
-          // OPTIMIZATION: Add 3 second timeout (reduced from 5s) to prevent blocking
-          const timeoutPromise = new Promise<void>((resolve) => 
-            setTimeout(() => {
-              console.log(`[Chat] ⚠️ Transaction history fetch timed out after 3s`);
-              resolve();
-            }, 3000)
-          );
-          
-          const fetchPromise = (async () => {
-            const rpcUrl = process.env.CRONOS_RPC_URL || "https://evm-t3.cronos.org";
-            const provider = new ethers.JsonRpcProvider(rpcUrl);
-            const currentBlock = await provider.getBlockNumber();
-            const txList: any[] = [];
-            // OPTIMIZATION: Reduce blocks to scan from 10 to 5 for much faster response
-            const blocksToCheck = Math.min(5, currentBlock);
-            const addressLower = verification.payer.toLowerCase();
-            
-            // OPTIMIZATION: Fetch only the most recent 5 blocks in parallel
-            const blockPromises = [];
-            for (let i = 0; i < blocksToCheck; i++) {
-              blockPromises.push(
-                provider.getBlock(currentBlock - i, true).catch(() => null)
-              );
-            }
-            
-            const blocks = await Promise.all(blockPromises);
-            
-            // OPTIMIZATION: Process blocks and transactions in parallel, limit to first 3 transactions per block
-            const allTxPromises: Promise<any>[] = [];
-            for (const block of blocks) {
-              if (!block || txList.length >= 10) break;
-              
-              if (block.transactions && Array.isArray(block.transactions)) {
-                // Only check first 3 transactions per block for speed
-                for (const txHash of block.transactions.slice(0, 3)) {
-                  if (txList.length >= 10) break;
-                  allTxPromises.push(
-                    provider.getTransaction(txHash).then(tx => {
-                      if (tx?.hash && (tx.from?.toLowerCase() === addressLower || tx.to?.toLowerCase() === addressLower)) {
-                        return {
-                          hash: tx.hash,
-                          from: tx.from || 'N/A',
-                          to: tx.to || 'N/A',
-                          value: tx.value ? ethers.formatEther(tx.value) + ' CRO' : '0 CRO',
-                          timestamp: block.timestamp ? Number(block.timestamp) * 1000 : Date.now(),
-                          blockNumber: Number(block.number),
-                        };
-                      }
-                      return null;
-                    }).catch(() => null)
-                  );
-                }
-              }
-            }
-            
-            const txResults = await Promise.all(allTxPromises);
-            txList.push(...txResults.filter(tx => tx !== null && tx !== undefined));
-            
-            if (txList.length > 0) {
-              txList.sort((a, b) => b.blockNumber - a.blockNumber);
-              results.transactionHistory = {
-                address: verification.payer,
-                transactions: txList.slice(0, 10), // Limit to 10 transactions
-              };
-              console.log(`[Chat] ✅ Transaction history fetched: ${txList.length} transactions`);
-            } else {
-              console.log(`[Chat] ℹ️ No transactions found in last ${blocksToCheck} blocks`);
-            }
-          })();
-          
-          await Promise.race([fetchPromise, timeoutPromise]);
-        } catch (err) {
-          console.warn(`[Chat] Transaction history fetch failed:`, err);
-        }
-      })()
-    );
-  }
+  // 5. Transaction history fetch removed (EVM logic deprecated in Solana migration)
 
   // Wait for all parallel fetches to complete
   await Promise.allSettled(promises);

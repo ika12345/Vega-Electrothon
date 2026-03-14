@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getAgentFromContract } from "../lib/contract";
+// Removed getAgentFromContract EVM import
 import {
   determineAgentTools,
   createCryptoComClient,
@@ -78,8 +78,21 @@ export async function executeAgent(
   input: string
 ): Promise<{ output: string; success: boolean }> {
   try {
-    // Always fetch agent from contract to get actual name and description
-    const agent = await getAgentFromContract(agentId);
+    // Mock agents for the demo - updated to handle Solana public keys
+    const MOCK_AGENTS = [
+      {
+        id: 1,
+        name: "Solana Contract Auditor",
+        description: "Audits Anchor and native Solana smart contracts for safety",
+      },
+      {
+        id: 2,
+        name: "Pump.fun Sniper Assistant",
+        description: "Analyzes new Solana tokens and checks for rug-pull signals",
+      }
+    ];
+
+    const agent = MOCK_AGENTS.find(a => a.id === agentId);
     
     if (!agent) {
       return {

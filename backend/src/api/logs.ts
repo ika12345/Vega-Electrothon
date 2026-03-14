@@ -118,7 +118,7 @@ router.get("/activity", async (req: Request, res: Response) => {
     
     // Combine and sort by timestamp
     const activities = [
-      ...executions.map((e) => ({
+      ...executions.map((e: any) => ({
         type: "execution" as const,
         id: e.executionId,
         agentId: e.agentId,
@@ -127,7 +127,7 @@ router.get("/activity", async (req: Request, res: Response) => {
         success: e.success,
         timestamp: e.timestamp,
       })),
-      ...payments.map((p) => ({
+      ...payments.map((p: any) => ({
         type: "payment" as const,
         id: p.paymentHash,
         agentId: p.agentId,
