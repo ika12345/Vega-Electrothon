@@ -85,17 +85,25 @@ export default function NewAgentPage() {
       if (typeof window !== "undefined" && apiUrl.includes("localhost") && window.location.hostname !== "localhost") {
         apiUrl = apiUrl.replace("localhost", window.location.hostname);
       }
-      await fetch(`${apiUrl}/api/agents/register`, {
+      console.log("[Register] Sending registration to backend:", `${apiUrl}/api/agents/register`);
+      const regResponse = await fetch(`${apiUrl}/api/agents/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formData.name,
           description: formData.description,
-          price: formData.price,
+          price: parseFloat(formData.price),
           signature,
           owner: publicKey.toBase58(),
         }),
       });
+
+      const regData = await regResponse.json();
+      console.log("[Register] Backend response:", regResponse.status, regData);
+
+      if (!regResponse.ok) {
+        throw new Error(regData.error || `Registration failed: ${regResponse.status}`);
+      }
 
       setIsConfirming(false);
       setIsSuccess(true);
